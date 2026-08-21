@@ -205,12 +205,76 @@
       align-items: center;
       justify-content: center;
       min-height: 100vh;
+      padding: 2rem;
       background: var(--bg);
+    }
+
+    .boot-card {
+      width: 100%;
+      max-width: 360px;
+      padding: 2.5rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      box-shadow: var(--shadow-lg);
+      text-align: center;
+    }
+
+    .boot-logo {
+      width: 64px;
+      height: 64px;
+      display: block;
+      margin: 0 auto 1.5rem;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    .boot-title {
+      margin-bottom: 8px;
+      color: var(--text-primary);
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .boot-message {
+      min-height: 2.6em;
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .boot-error {
+      margin-top: 1.25rem;
+    }
+
+    .boot-error-message {
+      margin-bottom: 1rem;
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .btn-retry-loading {
+      padding: 10px 20px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-retry-loading:hover {
+      background: #f0f0ee;
     }
 
     .spinner {
       width: 24px;
       height: 24px;
+      margin: 0 auto 1.25rem;
       border: 2px solid var(--border);
       border-top-color: var(--text-primary);
       border-radius: 50%;
@@ -1102,7 +1166,16 @@
 
   <!-- LOADING -->
   <div id="loading-screen">
-    <div class="spinner"></div>
+    <div class="boot-card" role="status" aria-live="polite" aria-atomic="true">
+      <img class="boot-logo" src="Logo/ambience_basic_blue_circle.png" alt="Ambience">
+      <div class="spinner" id="loading-spinner" aria-hidden="true"></div>
+      <div class="boot-title">사내 연락망을 불러오는 중</div>
+      <p class="boot-message" id="loading-message">접속 상태를 확인하고 있습니다...</p>
+      <div class="boot-error" id="loading-error" hidden>
+        <p class="boot-error-message" id="loading-error-message"></p>
+        <button class="btn-retry-loading" id="btn-retry-loading">다시 시도</button>
+      </div>
+    </div>
   </div>
 
   <!-- LOGIN -->
@@ -1339,17 +1412,58 @@
       app: document.getElementById('app-screen'),
     };
 
+    const loadingSpinner = document.getElementById('loading-spinner');
+    const loadingMessage = document.getElementById('loading-message');
+    const loadingError = document.getElementById('loading-error');
+    const loadingErrorMessage = document.getElementById('loading-error-message');
+
     function show(name) {
       Object.entries(screens).forEach(([k, el]) => {
-        el.style.display = (k === name) ? (k === 'login' || k === 'error' ? 'flex' : 'block') : 'none';
+        el.style.display = (k === name) ? (k === 'loading' || k === 'login' || k === 'error' ? 'flex' : 'block') : 'none';
       });
     }
 
+    function showLoading(message) {
+      loadingSpinner.hidden = false;
+      loadingError.hidden = true;
+      loadingMessage.textContent = message;
+      show('loading');
+    }
+
+    function showLoadingError(message) {
+      loadingSpinner.hidden = true;
+      loadingError.hidden = false;
+      loadingMessage.textContent = '연결을 완료하지 못했습니다.';
+      loadingErrorMessage.textContent = message;
+      show('loading');
+    }
+
+    function stopContactsSubscription() {
+      if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+      }
+    }
+
+    let bootSequence = 0;
+    let contacts = [];
+    let currentFilter = 'all';
+    let editingId = null;
+    let unsubscribe = null;
+
     // ─── Auth ───
     onAuthStateChanged(auth, user => {
-      if (!user) { show('login'); return; }
+      if (!user) {
+        bootSequence += 1;
+        stopContactsSubscription();
+        contacts = [];
+        show('login');
+        return;
+      }
       const domain = user.email.split('@')[1];
       if (!ALLOWED_DOMAINS.includes(domain)) {
+        bootSequence += 1;
+        stopContactsSubscription();
         const msg = document.getElementById('error-msg-text');
         msg.innerHTML = `<strong>${user.email}</strong><br>이 계정은 접근 권한이 없습니다.<br>회사 이메일로 다시 로그인해주세요.`;
         signOut(auth);
@@ -1365,20 +1479,34 @@
       } else {
         avatarEl.textContent = (user.displayName || user.email)[0].toUpperCase();
       }
-      show('app');
-      initApp();
+      startApp();
     });
 
     document.getElementById('btn-login').onclick = async () => {
-      try { await signInWithPopup(auth, provider); }
-      catch (e) { console.error(e); }
+      showLoading('Google 계정으로 로그인하는 중입니다...');
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (e) {
+        console.error(e);
+        show('login');
+      }
     };
 
     document.getElementById('btn-retry').onclick = () => {
       show('login');
     };
 
+    document.getElementById('btn-retry-loading').onclick = () => {
+      if (auth.currentUser) {
+        startApp();
+      } else {
+        show('login');
+      }
+    };
+
     document.getElementById('btn-logout').onclick = () => {
+      bootSequence += 1;
+      stopContactsSubscription();
       signOut(auth);
       contacts = [];
       render();
@@ -1395,28 +1523,55 @@
       la: { label: 'Ambience LA', badge: 'badge-la', av: 'av-la' },
     };
 
-    let contacts = [];
-    let currentFilter = 'all';
-    let editingId = null;
-    let unsubscribe = null;
-
-    function initApp() {
+    async function initApp() {
       buildFilters();
-      subscribeContacts();
+      await subscribeContacts();
+    }
+
+    async function startApp() {
+      const sequence = ++bootSequence;
+      showLoading('연락처를 불러오는 중입니다...');
+      try {
+        await initApp();
+        if (sequence !== bootSequence || !auth.currentUser) return;
+        show('app');
+      } catch (e) {
+        if (sequence !== bootSequence) return;
+        console.error('Failed to load contacts', e);
+        stopContactsSubscription();
+        showLoadingError('네트워크 연결을 확인한 뒤 다시 시도해주세요.');
+      }
     }
 
     async function subscribeContacts() {
-      if (unsubscribe) unsubscribe();
+      stopContactsSubscription();
       const col = collection(db, 'contacts');
       const snap = await getDocs(col);
       if (snap.empty) {
+        showLoading('연락처 정보를 준비하는 중입니다...');
         await seedInitialData();
       } else {
+        showLoading('연락처 정보를 확인하는 중입니다...');
         await runMigration(snap);
       }
-      unsubscribe = onSnapshot(query(col, orderBy('name')), snapshot => {
-        contacts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        render();
+      showLoading('최신 연락처를 연결하는 중입니다...');
+      await new Promise((resolve, reject) => {
+        let firstSnapshot = true;
+        unsubscribe = onSnapshot(query(col, orderBy('name')), snapshot => {
+          contacts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          render();
+          if (firstSnapshot) {
+            firstSnapshot = false;
+            resolve();
+          }
+        }, error => {
+          if (firstSnapshot) {
+            firstSnapshot = false;
+            reject(error);
+            return;
+          }
+          console.error('Contact listener stopped', error);
+        });
       });
     }
 
