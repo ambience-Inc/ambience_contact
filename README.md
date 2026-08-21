@@ -83,6 +83,13 @@ GitHub 저장소 → **Settings** → **Pages** → Branch: `main` → **Save**
 
 ---
 
+## 자동 배포
+
+- 배포 주소: `https://ambience-inc.github.io/ambience_contact/`
+- GitHub Pages 소스: `main` 브랜치의 저장소 루트 (`/`)
+- `main`에 변경사항이 반영되면 GitHub Pages가 자동으로 빌드 및 배포합니다.
+- 조직의 GitHub Actions 보안 정책은 선택 허용 목록을 사용하며, Pages 배포에 필요한 공식 액션만 명시적으로 허용합니다.
+
 ## 사용법
 
 - Google 로그인 → 회사 도메인 자동 확인
